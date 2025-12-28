@@ -7,11 +7,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import pygame
 
-from apps.level_editor.palette_model import (
-    PaletteModel,
-    TileEntry,
-    category_filter,
-)
+from apps.level_editor.palette_model import PaletteModel, TileEntry, category_filter
 
 
 @dataclass
@@ -63,17 +59,10 @@ class PalettePanel:
             24,
         )
 
-        # Filter buttons: None, Floor
-        fb_w = 80
-        fb_h = 22
-        fb_y = self.rect.y + self.config.padding + self._tileset_button.height + self.config.gutter
-        self._filter_buttons: Dict[str, pygame.Rect] = {
-            "none": pygame.Rect(self.rect.x + self.config.padding, fb_y, fb_w, fb_h),
-            "floor": pygame.Rect(
-                self.rect.x + self.config.padding + fb_w + self.config.gutter, fb_y, fb_w, fb_h
-            ),
-        }
+        # Filter buttons: None + dynamic categories from metadata
+        self._filter_buttons: Dict[str, pygame.Rect] = {}
         self._active_filter: str = "none"
+        self._categories: List[str] = []
         self._prev_button = pygame.Rect(
             self.rect.x + self.config.padding,
             self.rect.bottom - self.config.padding - 24,
@@ -133,8 +122,6 @@ class PalettePanel:
                 self.model.prev_page()
             elif event.key == pygame.K_PAGEDOWN:
                 self.model.next_page()
-            elif event.key == pygame.K_f:
-                self._apply_filter("floor")
             elif event.key == pygame.K_ESCAPE:
                 self._apply_filter("none")
 
@@ -156,7 +143,7 @@ class PalettePanel:
     @property
     def _grid_origin_y(self) -> int:
         # Tileset bar + gutter + filter buttons + gutter
-        fb_height = next(iter(self._filter_buttons.values())).height
+        fb_height = next(iter(self._filter_buttons.values())).height if self._filter_buttons else 0
         return (
             self.rect.y
             + self.config.padding
@@ -171,6 +158,7 @@ class PalettePanel:
         pygame.draw.rect(surface, self.config.border_color, self.rect, 1)
 
         self._draw_tileset_bar(surface)
+        self._ensure_filter_buttons()
         self._draw_filters(surface)
         self._draw_grid(surface)
         self._draw_paging(surface)
@@ -190,13 +178,13 @@ class PalettePanel:
         )
 
     def _draw_filters(self, surface: pygame.Surface) -> None:
-        labels = {"none": "All", "floor": "Floor"}
+        labels = {"none": "All", **{c: c.capitalize() for c in self._categories}}
         for key, rect in self._filter_buttons.items():
             active = key == self._active_filter
             bg = (70, 70, 90) if active else self.config.grid_color
             pygame.draw.rect(surface, bg, rect)
             pygame.draw.rect(surface, self.config.border_color, rect, 1)
-            text = self.font.render(labels[key], True, self.config.text_color)
+            text = self.font.render(labels.get(key, key), True, self.config.text_color)
             surface.blit(
                 text,
                 (
@@ -310,11 +298,45 @@ class PalettePanel:
     def _apply_filter(self, key: str) -> None:
         if key == "none":
             self.model.set_filter(None)
-        elif key == "floor":
-            self.model.set_filter(category_filter("floor"))
+        elif key in self._categories:
+            self.model.set_filter(category_filter(key))
         else:
             return
         self._active_filter = key
         self.hovered = None
         self.selected = None
         self.drag_payload = None
+
+    def _ensure_filter_buttons(self) -> None:
+        tileset_name = self.model.state.tileset_name
+        if not tileset_name:
+            return
+        tiles = self.model.tilesets[tileset_name].tiles
+        categories: List[str] = []
+        seen = set()
+        for tile in tiles:
+            cat_val = tile.properties.get("category")
+            if not cat_val:
+                continue
+            for part in cat_val.split(","):
+                cat = part.strip()
+                if cat and cat not in seen:
+                    seen.add(cat)
+                    categories.append(cat)
+        categories.sort()
+        if categories == self._categories:
+            return
+        self._categories = categories
+        # Rebuild buttons row
+        self._filter_buttons.clear()
+        fb_w = 80
+        fb_h = 22
+        fb_y = self.rect.y + self.config.padding + self._tileset_button.height + self.config.gutter
+        x = self.rect.x + self.config.padding
+        self._filter_buttons["none"] = pygame.Rect(x, fb_y, fb_w, fb_h)
+        x += fb_w + self.config.gutter
+        for cat in categories:
+            self._filter_buttons[cat] = pygame.Rect(x, fb_y, fb_w, fb_h)
+            x += fb_w + self.config.gutter
+        if self._active_filter not in self._filter_buttons:
+            self._active_filter = "none"

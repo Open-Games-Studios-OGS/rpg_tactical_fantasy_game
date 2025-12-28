@@ -80,7 +80,7 @@ def main() -> None:
         panel.draw(screen)
 
         # Draw current tileset label at top-left
-        label = f"Tileset: {tileset_names[tileset_index]}  ([/]=cycle, F=floor, Esc=all)"
+        label = f"Tileset: {tileset_names[tileset_index]}  ([/]=cycle, category buttons click, Esc=all)"
         font = pygame.font.SysFont(None, 18)
         text = font.render(label, True, (230, 230, 230))
         screen.blit(text, (14, 6))
