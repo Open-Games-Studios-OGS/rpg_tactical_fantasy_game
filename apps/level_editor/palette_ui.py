@@ -63,9 +63,18 @@ class PalettePanel:
         )
 
         # Filter buttons: None + dynamic categories from metadata
-        self._filter_buttons: Dict[str, pygame.Rect] = {}
+        # Category dropdown
         self._active_filter: str = "none"
         self._categories: List[str] = []
+        self._dropdown_rect = pygame.Rect(
+            self.rect.x + self.config.padding,
+            self.rect.y + self.config.padding + self._tileset_button.height + self.config.gutter,
+            140,
+            24,
+        )
+        self._dropdown_expanded: bool = False
+        self._dropdown_scroll: int = 0
+        self._max_visible_items: int = 10
         self._prev_button = pygame.Rect(
             self.rect.x + self.config.padding,
             self.rect.bottom - self.config.padding - 24,
@@ -85,9 +94,14 @@ class PalettePanel:
                 if self._tileset_button.collidepoint(event.pos) and self.on_tileset_menu:
                     self.on_tileset_menu()
                     return
-                for key, rect in self._filter_buttons.items():
-                    if rect.collidepoint(event.pos):
-                        self._apply_filter(key)
+                if self._dropdown_rect.collidepoint(event.pos):
+                    self._dropdown_expanded = not self._dropdown_expanded
+                    return
+                if self._dropdown_expanded:
+                    clicked = self._dropdown_item_at(event.pos)
+                    if clicked is not None:
+                        self._apply_filter(clicked)
+                        self._dropdown_expanded = False
                         return
                 if self._prev_button.collidepoint(event.pos):
                     self.model.prev_page()
@@ -109,9 +123,15 @@ class PalettePanel:
                             stamp_mode=stamp,
                         )
             elif event.button == 4:
-                self.model.prev_page()
+                if self._dropdown_expanded:
+                    self._scroll_dropdown(-1)
+                else:
+                    self.model.prev_page()
             elif event.button == 5:
-                self.model.next_page()
+                if self._dropdown_expanded:
+                    self._scroll_dropdown(1)
+                else:
+                    self.model.next_page()
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button in (1, 3):
@@ -127,6 +147,10 @@ class PalettePanel:
                 self.model.next_page()
             elif event.key == pygame.K_ESCAPE:
                 self._apply_filter("none")
+            elif event.key == pygame.K_COMMA:  # cycle categories backward
+                self._cycle_category(-1)
+            elif event.key == pygame.K_PERIOD:  # cycle categories forward
+                self._cycle_category(1)
 
     def _tile_index_at(self, pos: Tuple[int, int]) -> Optional[int]:
         grid_origin_y = self._grid_origin_y
@@ -145,8 +169,8 @@ class PalettePanel:
 
     @property
     def _grid_origin_y(self) -> int:
-        # Tileset bar + gutter + filter buttons + gutter
-        fb_height = next(iter(self._filter_buttons.values())).height if self._filter_buttons else 0
+        # Tileset bar + gutter + dropdown height + gutter
+        fb_height = self._dropdown_rect.height
         return (
             self.rect.y
             + self.config.padding
@@ -161,10 +185,11 @@ class PalettePanel:
         pygame.draw.rect(surface, self.config.border_color, self.rect, 1)
 
         self._draw_tileset_bar(surface)
-        self._ensure_filter_buttons()
-        self._draw_filters(surface)
+        self._ensure_categories()
         self._draw_grid(surface)
         self._draw_paging(surface)
+        # Draw dropdown after grid/paging so the expanded list overlays tiles
+        self._draw_dropdown(surface)
         self._draw_tooltip(surface)
 
     def _draw_tileset_bar(self, surface: pygame.Surface) -> None:
@@ -180,19 +205,62 @@ class PalettePanel:
             ),
         )
 
-    def _draw_filters(self, surface: pygame.Surface) -> None:
-        labels = {"none": "All", **{c: c.capitalize() for c in self._categories}}
-        for key, rect in self._filter_buttons.items():
+    def _draw_dropdown(self, surface: pygame.Surface) -> None:
+        # Header
+        pygame.draw.rect(surface, self.config.grid_color, self._dropdown_rect)
+        pygame.draw.rect(surface, self.config.border_color, self._dropdown_rect, 1)
+        label = "All" if self._active_filter == "none" else self._active_filter.capitalize()
+        text = self.font.render(label, True, self.config.text_color)
+        surface.blit(
+            text,
+            (
+                self._dropdown_rect.x + 6,
+                self._dropdown_rect.y + (self._dropdown_rect.height - text.get_height()) // 2,
+            ),
+        )
+        # Chevron
+        chevron = "▾" if not self._dropdown_expanded else "▴"
+        ch = self.font.render(chevron, True, self.config.text_color)
+        surface.blit(
+            ch,
+            (
+                self._dropdown_rect.right - ch.get_width() - 6,
+                self._dropdown_rect.y + (self._dropdown_rect.height - ch.get_height()) // 2,
+            ),
+        )
+
+        if not self._dropdown_expanded:
+            return
+
+        items = ["none"] + self._categories
+        visible = items[self._dropdown_scroll : self._dropdown_scroll + self._max_visible_items]
+        item_height = self._dropdown_rect.height
+        list_height = item_height * len(visible)
+        list_rect = pygame.Rect(
+            self._dropdown_rect.x,
+            self._dropdown_rect.bottom + self.config.gutter,
+            self._dropdown_rect.width,
+            list_height,
+        )
+        pygame.draw.rect(surface, self.config.grid_color, list_rect)
+        pygame.draw.rect(surface, self.config.border_color, list_rect, 1)
+
+        for idx, key in enumerate(visible):
+            row_rect = pygame.Rect(
+                list_rect.x,
+                list_rect.y + idx * item_height,
+                list_rect.width,
+                item_height,
+            )
             active = key == self._active_filter
-            bg = (70, 70, 90) if active else self.config.grid_color
-            pygame.draw.rect(surface, bg, rect)
-            pygame.draw.rect(surface, self.config.border_color, rect, 1)
-            text = self.font.render(labels.get(key, key), True, self.config.text_color)
+            if active:
+                pygame.draw.rect(surface, (70, 70, 90), row_rect)
+            text = self.font.render("All" if key == "none" else key.capitalize(), True, self.config.text_color)
             surface.blit(
                 text,
                 (
-                    rect.x + (rect.width - text.get_width()) // 2,
-                    rect.y + (rect.height - text.get_height()) // 2,
+                    row_rect.x + 6,
+                    row_rect.y + (row_rect.height - text.get_height()) // 2,
                 ),
             )
 
@@ -310,7 +378,7 @@ class PalettePanel:
         self.selected = None
         self.drag_payload = None
 
-    def _ensure_filter_buttons(self) -> None:
+    def _ensure_categories(self) -> None:
         tileset_name = self.model.state.tileset_name
         if not tileset_name:
             return
@@ -330,16 +398,42 @@ class PalettePanel:
         if categories == self._categories:
             return
         self._categories = categories
-        # Rebuild buttons row
-        self._filter_buttons.clear()
-        fb_w = 80
-        fb_h = 22
-        fb_y = self.rect.y + self.config.padding + self._tileset_button.height + self.config.gutter
-        x = self.rect.x + self.config.padding
-        self._filter_buttons["none"] = pygame.Rect(x, fb_y, fb_w, fb_h)
-        x += fb_w + self.config.gutter
-        for cat in categories:
-            self._filter_buttons[cat] = pygame.Rect(x, fb_y, fb_w, fb_h)
-            x += fb_w + self.config.gutter
-        if self._active_filter not in self._filter_buttons:
+        if self._active_filter not in ("none", *categories):
             self._active_filter = "none"
+        self._dropdown_scroll = 0
+
+    def _dropdown_item_at(self, pos: Tuple[int, int]) -> Optional[str]:
+        if not self._dropdown_expanded:
+            return None
+        items = ["none"] + self._categories
+        visible = items[self._dropdown_scroll : self._dropdown_scroll + self._max_visible_items]
+        item_height = self._dropdown_rect.height
+        list_rect = pygame.Rect(
+            self._dropdown_rect.x,
+            self._dropdown_rect.bottom + self.config.gutter,
+            self._dropdown_rect.width,
+            item_height * len(visible),
+        )
+        if not list_rect.collidepoint(pos):
+            return None
+        rel_y = pos[1] - list_rect.y
+        idx = rel_y // item_height
+        if 0 <= idx < len(visible):
+            return visible[idx]
+        return None
+
+    def _scroll_dropdown(self, delta: int) -> None:
+        items = ["none"] + self._categories
+        max_start = max(0, len(items) - self._max_visible_items)
+        self._dropdown_scroll = min(max(0, self._dropdown_scroll + delta), max_start)
+
+    def _cycle_category(self, delta: int) -> None:
+        items = ["none"] + self._categories
+        if not items:
+            return
+        try:
+            idx = items.index(self._active_filter)
+        except ValueError:
+            idx = 0
+        new_idx = (idx + delta) % len(items)
+        self._apply_filter(items[new_idx])
