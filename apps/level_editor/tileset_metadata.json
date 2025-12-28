@@ -12,7 +12,9 @@
       { "name": "character", "ids": [[3773, 4567]] },
       { "name": "character", "ids": [[4711, 5189]] },
       { "name": "equipment", "ids": [[5190, 5415]]},
-      { "name": "cat", "ids": [[5416, 5420]] }
+      { "name": "cat", "ids": [[5416, 5420]] },
+      { "name": "equipment", "ids": [[5421, 6015]] },
+      { "name": "monster", "ids": [[6016, 6038]] }
     ],
     "properties": {
       "0": { "type": "void" }
