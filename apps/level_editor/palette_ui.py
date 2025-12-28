@@ -21,8 +21,8 @@ class DragPayload:
 @dataclass
 class PaletteUIConfig:
     tile_render_size: int = 48
-    grid_cols: int = 5
-    grid_rows: int = 5
+    grid_cols: int = 10
+    grid_rows: int = 6
     padding: int = 8
     gutter: int = 4
     bg_color: Tuple[int, int, int] = (30, 30, 30)
@@ -45,6 +45,9 @@ class PalettePanel:
         self.rect = rect
         self.config = config
         self.on_tileset_menu = on_tileset_menu
+
+        # Align model page size with visible grid capacity
+        self.model.state.page_size = self.config.grid_cols * self.config.grid_rows
 
         self.font = pygame.font.SysFont(self.config.font_name, self.config.font_size)
         self.selected: Optional[TileEntry] = None

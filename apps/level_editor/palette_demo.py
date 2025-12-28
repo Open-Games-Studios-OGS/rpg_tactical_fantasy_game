@@ -30,7 +30,7 @@ from apps.level_editor.tileset_loader import discover_tilesets, load_tilesets
 
 def main() -> None:
     pygame.init()
-    screen = pygame.display.set_mode((440, 500))
+    screen = pygame.display.set_mode((640, 620))
     pygame.display.set_caption("Palette Demo")
 
     search_roots = [Path("maps"), Path("imgs/tiled_tilesets")]
@@ -58,7 +58,7 @@ def main() -> None:
     model.set_tileset(tileset_names[tileset_index])
     print("Loaded tilesets:", tileset_names)
 
-    panel_rect = pygame.Rect(10, 30, 420, 450)
+    panel_rect = pygame.Rect(10, 30, 620, 560)
     panel = PalettePanel(model, panel_rect, on_tileset_menu=lambda: print("Tileset menu placeholder"))
 
     clock = pygame.time.Clock()
