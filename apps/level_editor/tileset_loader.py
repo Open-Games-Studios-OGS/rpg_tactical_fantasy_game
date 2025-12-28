@@ -153,7 +153,11 @@ def load_tileset(tsx_path: Path, base_dir: Optional[Path] = None) -> TilesetData
         tid = int(tile_node.attrib.get("id", -1))
         if tid < 0:
             continue
-        tile_props[tid] = _parse_properties(tile_node)
+        props = _parse_properties(tile_node)
+        tile_type = tile_node.attrib.get("type")
+        if tile_type:
+            props.setdefault("type", tile_type)
+        tile_props[tid] = props
         if tile_node.find("animation") is not None:
             animations[tid] = True
 

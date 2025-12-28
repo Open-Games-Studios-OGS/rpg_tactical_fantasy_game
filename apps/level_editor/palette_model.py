@@ -75,3 +75,21 @@ def property_filter(key: str, value: Optional[str] = None) -> FilterFn:
         return tile.properties.get(key) == value
 
     return _pred
+
+
+def has_properties_filter() -> FilterFn:
+    return lambda tile: bool(tile.properties)
+
+
+def animated_filter() -> FilterFn:
+    return lambda tile: tile.is_animated
+
+
+def category_filter(category: str) -> FilterFn:
+    category_lower = category.lower()
+
+    def _pred(tile: TileEntry) -> bool:
+        cat_value = tile.properties.get("category", "")
+        return any(part.strip().lower() == category_lower for part in cat_value.split(",")) if cat_value else False
+
+    return _pred

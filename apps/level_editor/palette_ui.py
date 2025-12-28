@@ -7,7 +7,11 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import pygame
 
-from apps.level_editor.palette_model import PaletteModel, TileEntry
+from apps.level_editor.palette_model import (
+    PaletteModel,
+    TileEntry,
+    category_filter,
+)
 
 
 @dataclass
@@ -51,6 +55,25 @@ class PalettePanel:
         self.hovered: Optional[int] = None
         self.drag_payload: Optional[DragPayload] = None
 
+        # UI elements
+        self._tileset_button = pygame.Rect(
+            self.rect.x + self.config.padding,
+            self.rect.y + self.config.padding,
+            self.rect.width - 2 * self.config.padding,
+            24,
+        )
+
+        # Filter buttons: None, Floor
+        fb_w = 80
+        fb_h = 22
+        fb_y = self.rect.y + self.config.padding + self._tileset_button.height + self.config.gutter
+        self._filter_buttons: Dict[str, pygame.Rect] = {
+            "none": pygame.Rect(self.rect.x + self.config.padding, fb_y, fb_w, fb_h),
+            "floor": pygame.Rect(
+                self.rect.x + self.config.padding + fb_w + self.config.gutter, fb_y, fb_w, fb_h
+            ),
+        }
+        self._active_filter: str = "none"
         self._prev_button = pygame.Rect(
             self.rect.x + self.config.padding,
             self.rect.bottom - self.config.padding - 24,
@@ -63,12 +86,6 @@ class PalettePanel:
             50,
             24,
         )
-        self._tileset_button = pygame.Rect(
-            self.rect.x + self.config.padding,
-            self.rect.y + self.config.padding,
-            self.rect.width - 2 * self.config.padding,
-            24,
-        )
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -76,6 +93,10 @@ class PalettePanel:
                 if self._tileset_button.collidepoint(event.pos) and self.on_tileset_menu:
                     self.on_tileset_menu()
                     return
+                for key, rect in self._filter_buttons.items():
+                    if rect.collidepoint(event.pos):
+                        self._apply_filter(key)
+                        return
                 if self._prev_button.collidepoint(event.pos):
                     self.model.prev_page()
                     return
@@ -112,6 +133,10 @@ class PalettePanel:
                 self.model.prev_page()
             elif event.key == pygame.K_PAGEDOWN:
                 self.model.next_page()
+            elif event.key == pygame.K_f:
+                self._apply_filter("floor")
+            elif event.key == pygame.K_ESCAPE:
+                self._apply_filter("none")
 
     def _tile_index_at(self, pos: Tuple[int, int]) -> Optional[int]:
         grid_origin_y = self._grid_origin_y
@@ -130,15 +155,26 @@ class PalettePanel:
 
     @property
     def _grid_origin_y(self) -> int:
-        return self.rect.y + self.config.padding + self._tileset_button.height + self.config.gutter
+        # Tileset bar + gutter + filter buttons + gutter
+        fb_height = next(iter(self._filter_buttons.values())).height
+        return (
+            self.rect.y
+            + self.config.padding
+            + self._tileset_button.height
+            + self.config.gutter
+            + fb_height
+            + self.config.gutter
+        )
 
     def draw(self, surface: pygame.Surface) -> None:
         pygame.draw.rect(surface, self.config.bg_color, self.rect)
         pygame.draw.rect(surface, self.config.border_color, self.rect, 1)
 
         self._draw_tileset_bar(surface)
+        self._draw_filters(surface)
         self._draw_grid(surface)
         self._draw_paging(surface)
+        self._draw_tooltip(surface)
 
     def _draw_tileset_bar(self, surface: pygame.Surface) -> None:
         pygame.draw.rect(surface, self.config.grid_color, self._tileset_button)
@@ -152,6 +188,22 @@ class PalettePanel:
                 self._tileset_button.y + (self._tileset_button.height - text.get_height()) // 2,
             ),
         )
+
+    def _draw_filters(self, surface: pygame.Surface) -> None:
+        labels = {"none": "All", "floor": "Floor"}
+        for key, rect in self._filter_buttons.items():
+            active = key == self._active_filter
+            bg = (70, 70, 90) if active else self.config.grid_color
+            pygame.draw.rect(surface, bg, rect)
+            pygame.draw.rect(surface, self.config.border_color, rect, 1)
+            text = self.font.render(labels[key], True, self.config.text_color)
+            surface.blit(
+                text,
+                (
+                    rect.x + (rect.width - text.get_width()) // 2,
+                    rect.y + (rect.height - text.get_height()) // 2,
+                ),
+            )
 
     def _draw_grid(self, surface: pygame.Surface) -> None:
         tiles = self.model.page_tiles()
@@ -177,6 +229,34 @@ class PalettePanel:
                     pygame.draw.rect(surface, (200, 200, 50), cell, 2)
                 elif self.hovered == idx:
                     pygame.draw.rect(surface, (150, 150, 150), cell, 1)
+
+    def _draw_tooltip(self, surface: pygame.Surface) -> None:
+        if self.hovered is None:
+            return
+        tiles = self.model.page_tiles()
+        if self.hovered >= len(tiles):
+            return
+        tile = tiles[self.hovered]
+        lines = [f"ID: {tile.local_id}"]
+        if tile.properties:
+            lines += [f"{k}: {v}" for k, v in tile.properties.items()]
+        else:
+            lines.append("(no properties)")
+
+        padding = 6
+        font = self.font
+        text_surfs = [font.render(l, True, self.config.text_color) for l in lines]
+        width = max(ts.get_width() for ts in text_surfs) + 2 * padding
+        height = sum(ts.get_height() for ts in text_surfs) + 2 * padding
+        x = self.rect.right - width - self.config.padding
+        y = self.rect.bottom - height - self.config.padding
+        box = pygame.Rect(x, y, width, height)
+        pygame.draw.rect(surface, (25, 25, 25), box)
+        pygame.draw.rect(surface, self.config.border_color, box, 1)
+        cy = y + padding
+        for ts in text_surfs:
+            surface.blit(ts, (x + padding, cy))
+            cy += ts.get_height()
 
     def _draw_paging(self, surface: pygame.Surface) -> None:
         pygame.draw.rect(surface, self.config.grid_color, self._prev_button)
@@ -210,3 +290,31 @@ class PalettePanel:
                 self._prev_button.y + (self._prev_button.height - label_surf.get_height()) // 2,
             ),
         )
+
+        # Counts label: filtered/total
+        total = 0
+        filtered = 0
+        if self.model.state.tileset_name:
+            total = len(self.model.tilesets[self.model.state.tileset_name].tiles)
+            filtered = len(self.model.active_tiles)
+        counts_label = f"{filtered}/{total}"
+        counts_surf = self.font.render(counts_label, True, self.config.text_color)
+        surface.blit(
+            counts_surf,
+            (
+                self._next_button.right - counts_surf.get_width(),
+                self._next_button.y - counts_surf.get_height() - 2,
+            ),
+        )
+
+    def _apply_filter(self, key: str) -> None:
+        if key == "none":
+            self.model.set_filter(None)
+        elif key == "floor":
+            self.model.set_filter(category_filter("floor"))
+        else:
+            return
+        self._active_filter = key
+        self.hovered = None
+        self.selected = None
+        self.drag_payload = None

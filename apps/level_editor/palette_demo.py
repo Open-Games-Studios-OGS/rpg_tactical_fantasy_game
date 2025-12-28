@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from apps.level_editor.metadata import apply_metadata, load_metadata
 from apps.level_editor.palette_model import PaletteModel
 from apps.level_editor.palette_ui import PalettePanel
 from apps.level_editor.tileset_loader import discover_tilesets, load_tilesets
@@ -29,7 +30,7 @@ from apps.level_editor.tileset_loader import discover_tilesets, load_tilesets
 
 def main() -> None:
     pygame.init()
-    screen = pygame.display.set_mode((420, 460))
+    screen = pygame.display.set_mode((440, 500))
     pygame.display.set_caption("Palette Demo")
 
     search_roots = [Path("maps"), Path("imgs/tiled_tilesets")]
@@ -42,13 +43,22 @@ def main() -> None:
         return
 
     cache = load_tilesets(tileset_paths)
+
+    # Apply optional editor metadata
+    meta_path = Path("apps/level_editor/tileset_metadata.json")
+    metadata = load_metadata(meta_path)
+    if metadata:
+        apply_metadata(cache, metadata)
+        print(f"Applied metadata from {meta_path}")
+    else:
+        print(f"No metadata file found at {meta_path}; using raw TSX data")
     model = PaletteModel(cache)
     tileset_names = list(cache.keys())
     tileset_index = 0
     model.set_tileset(tileset_names[tileset_index])
     print("Loaded tilesets:", tileset_names)
 
-    panel_rect = pygame.Rect(10, 10, 400, 420)
+    panel_rect = pygame.Rect(10, 30, 420, 450)
     panel = PalettePanel(model, panel_rect, on_tileset_menu=lambda: print("Tileset menu placeholder"))
 
     clock = pygame.time.Clock()
@@ -70,7 +80,7 @@ def main() -> None:
         panel.draw(screen)
 
         # Draw current tileset label at top-left
-        label = f"Tileset: {tileset_names[tileset_index]}  ([/]=cycle)"
+        label = f"Tileset: {tileset_names[tileset_index]}  ([/]=cycle, F=floor, Esc=all)"
         font = pygame.font.SysFont(None, 18)
         text = font.render(label, True, (230, 230, 230))
         screen.blit(text, (14, 6))

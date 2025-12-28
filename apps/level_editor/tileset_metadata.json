@@ -1,0 +1,11 @@
+{
+  "spritesheet": {
+    "categories": [
+      { "name": "void", "ids": [0] },
+      { "name": "floor", "ids": [[150, 670]] }
+    ],
+    "properties": {
+      "0": { "type": "void" }
+    }
+  }
+}
