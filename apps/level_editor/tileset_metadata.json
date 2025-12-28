@@ -2,6 +2,7 @@
   "spritesheet": {
     "categories": [
       { "name": "void", "ids": [0] },
+      { "name": "object", "ids": [[1, 99]] },
       { "name": "door", "ids": [[100, 129]] },
       { "name": "floor", "ids": [[130, 670]] }
     ],
